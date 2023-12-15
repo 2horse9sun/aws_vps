@@ -1,0 +1,59 @@
+Parameters:
+  VPSName:
+    Type: String
+    Default: vps
+  VPSInstanceType:
+    Description: VPS EC2 instance type
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t2.nano, t2.micro, t2.small, t2.medium, t2.large, t2.xlarge, t2.2xlarge,
+      t3.nano, t3.micro, t3.small, t3.medium, t3.large, t3.xlarge, t3.2xlarge,
+      m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge, m4.10xlarge,
+      m5.large, m5.xlarge, m5.2xlarge, m5.4xlarge,
+      c5.large, c5.xlarge, c5.2xlarge, c5.4xlarge, c5.9xlarge,
+      g3.8xlarge,
+      r5.large, r5.xlarge, r5.2xlarge, r5.4xlarge, r3.12xlarge,
+      i3.xlarge, i3.2xlarge, i3.4xlarge, i3.8xlarge,
+      d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge]
+    ConstraintDescription: must be a valid EC2 instance type.
+  VPSAmiId:
+    Default: ami-07091c106c3860229
+    Type:  String
+
+Resources:
+### Server Instance ###############################################################################
+  VPSInstance: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref VPSAmiId
+      KeyName: !ImportValue VPSKeyName
+      IamInstanceProfile: !ImportValue VPSInstanceProfileName
+      InstanceType: !Ref VPSInstanceType
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet: 
+            - !ImportValue VPSSecurityGroupId
+          SubnetId: !ImportValue VPSSubnetId
+      Tags:
+      - Key: Name
+        Value: !Ref VPSName
+      UserData:
+        Fn::Base64: !Sub 
+          - |
+            #!/bin/bash
+            mkdir -p /vps
+            cd /vps
+            wget -qO- -o- https://git.io/v2ray.sh > v2ray.sh
+            sh v2ray.sh | sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2};?)?)?[mGK]//g" > config.txt
+            aws sns publish --topic-arn ${SNSTopicArn} --message "$(cat config.txt)"
+
+            chown -R ec2-user:ec2-user /vps
+            chmod -R 755 /vps
+
+          - SNSTopicArn: !ImportValue SNSTopicArn
+
+Outputs:
+  VPSPublicIp:
+    Description: PublicIp
+    Value: !GetAtt VPSInstance.PublicIp 
